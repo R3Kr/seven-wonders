@@ -243,7 +243,9 @@ class Game internal constructor(
     /**
      * Computes the score for all players.
      */
-    private fun computeScore(): ScoreBoard =
+
+    //we want to use this function outside of the game class
+    fun computeScore(): ScoreBoard =
         ScoreBoard(table.boards.map { it.computeScore(players[it.playerIndex]) }.sortedDescending())
 
     private class MissingPreparedMoveException(playerIndex: Int) :
