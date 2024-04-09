@@ -31,3 +31,4 @@ refreshVersions {
         candidate.stabilityLevel != StabilityLevel.Stable || "-alpha" in candidate.value || "-beta" in candidate.value
     }
 }
+include("sw-mcts")
