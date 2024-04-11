@@ -135,6 +135,11 @@ private suspend fun SevenWondersSession.autoPlayTurn(turn: PlayerTurnInfo<*>) {
     }
 }
 
+
+private fun customDiscard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>): PlayerMove {
+    return  PlayerMove(MoveType.DISCARD, turnInfo.action.hand.first().name)
+}
+
 private fun createPlayCardMove(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>): PlayerMove {
     val wonderBuildability = turnInfo.wonderBuildability
     val hand = turnInfo.action.hand
