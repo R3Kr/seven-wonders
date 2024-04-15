@@ -42,6 +42,7 @@ class Game internal constructor(
     }
 
     private fun startNewTurn() {
+        val tableState = table.toTableState()
         currentTurnInfo = players.map { player ->
             val hand = hands.createHand(player)
             val action = if (hand.isEmpty()) {
@@ -49,7 +50,7 @@ class Game internal constructor(
             } else {
                 TurnAction.PlayFromHand(message = actionMessage(hand, player), hand = hand)
             }
-            PlayerTurnInfo(playerIndex = player.index, table = table.toTableState(), action = action)
+            PlayerTurnInfo(playerIndex = player.index, table = tableState, action = action)
         }
     }
 
@@ -75,10 +76,11 @@ class Game internal constructor(
 
     private fun startEndGameActionsTurn() {
         // some player may need to do additional stuff
+        val tableState = table.toTableState()
         currentTurnInfo = players.map { player ->
             PlayerTurnInfo(
                 playerIndex = player.index,
-                table = table.toTableState(),
+                table = tableState,
                 action = computeEndGameAction(player),
             )
         }

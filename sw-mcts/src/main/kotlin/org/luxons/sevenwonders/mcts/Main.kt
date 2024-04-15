@@ -1,7 +1,9 @@
 package org.luxons.sevenwonders.mcts
 
+import org.luxons.sevenwonders.engine.Game
 import org.luxons.sevenwonders.engine.data.GameDefinition
 import org.luxons.sevenwonders.model.*
+import org.luxons.sevenwonders.model.cards.HandCard
 import org.luxons.sevenwonders.model.wonders.deal
 import kotlin.math.ln
 import kotlin.math.sqrt
@@ -24,6 +26,7 @@ class DiscardAgent : Agent {
 }
 
 class RandomAgent : Agent {
+    private val random = Random(0)
     override fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove? {
         when (val a = turnInfo.action) {
             is TurnAction.PlayFromHand -> {
@@ -32,19 +35,20 @@ class RandomAgent : Agent {
                     a.hand.first().name,
                     turnInfo.wonderBuildability.transactionsOptions.first()
                 ) else null
-
                 val availablePlays = a.hand.filter {
                     it.playability.isPlayable
                 }.map { PlayerMove(MoveType.PLAY, it.name, it.playability.transactionOptions.first()) }.toMutableList()
 
                 playWonderMove?.let { availablePlays.add(it) }
 
-                return availablePlays.randomOrNull() ?: PlayerMove(MoveType.DISCARD, a.hand.first().name)
+                return availablePlays.randomOrNull(random) ?: PlayerMove(MoveType.DISCARD, a.hand.first().name)
             }
+
             is TurnAction.PlayFromDiscarded -> {
                 val card = a.discardedCards.first()
                 return PlayerMove(MoveType.PLAY_FREE_DISCARDED, card.name)
             }
+
             is TurnAction.Wait -> return null
             else -> throw IllegalStateException(a.toString())
         }
@@ -52,12 +56,43 @@ class RandomAgent : Agent {
 
 }
 
-class MCTS(val playerIndex: Int) {
-    val root = MCTS_Node(null)
+class MCTSAgent(val playerIndex: Int, val simulationCount: Int, val deterministicGameFactory: GameFactory) : Agent {
+    var mcts: MCTS? = null
+    override fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove? {
+
+        return when (val a = turnInfo.action) {
+            is TurnAction.PlayFromHand -> {
+                mcts = MCTS(
+                    simulationCount,
+                    State(playerIndex, listOf(turnInfo.table), a.hand, PlayerMove(MoveType.DISCARD, "")),
+                    deterministicGameFactory
+                )
+                val bestChild = mcts?.runSimulation { }
+                bestChild?.state?.correspondingPlayerMove
+
+            }
+
+            else -> null
+        }
+
+    }
+
+}
+
+
+data class State(
+    val playerIndex: Int,
+    val tableStates: List<TableState>,
+    val hand: List<HandCard>,
+    val correspondingPlayerMove: PlayerMove
+)
+
+class MCTS(val simulationCount: Int, state: State, deterministicGameFactory: GameFactory) {
+    val root = MCTS_Node(null, state, deterministicGameFactory)
 }
 
 fun MCTS.runSimulation(
-    simulationCount: Int, sideEffect: (MCTS_Node) -> Unit = {
+    sideEffect: (MCTS_Node) -> Unit = {
     }
 ): MCTS_Node {
     for (i in 1..simulationCount) {
@@ -74,19 +109,97 @@ private fun MCTS.bestChild(): MCTS_Node {
 }
 
 typealias MCTS_NodeFactory = () -> MCTS_Node
+typealias GameFactory = () -> Game
+typealias GameFactoryFactory = () -> GameFactory
 
-class MCTS_Node(var parent: MCTS_Node?, val terminal: Boolean = false) {
+class MCTS_Node(
+    var parent: MCTS_Node?,
+    val state: State,
+    val deterministicGameFactory: GameFactory,
+) {
     companion object {
         const val EXPLORE_CONSTANT = 0.3
     }
 
+
     val testReward = if (Random.nextInt(0, 10) > 0) 0 else 1
     val visitedChildren = mutableListOf<MCTS_Node>()
-    val unvisitedChildrenFactories: MutableList<MCTS_NodeFactory> =
-        if (!terminal) (0..Random.nextInt(3)).map { { MCTS_Node(this) } }.toMutableList() else mutableListOf()
+    val unvisitedChildrenFactories: MutableList<MCTS_NodeFactory> = createUnvisitedChildrenFactories()
+    //(0..Random.nextInt(3)).map { { MCTS_Node(this, state, deterministicGameFactory) } }.toMutableList()
 
     var visited = 0
     var accumulatedReward = 0
+
+    private fun createUnvisitedChildrenFactories(): MutableList<MCTS_NodeFactory> {
+
+        val discardAgent = DiscardAgent()
+        val playableCards = state.hand//.filter { it.playability.isPlayable }
+        val gameStatesFromPlayableCards = playableCards.map { card ->
+            val game = createAndPlayGameToCurrentState()
+            val mctsPlayerIndex = state.playerIndex
+            val move = if (card.playability.isPlayable) PlayerMove(
+                MoveType.PLAY,
+                card.name,
+                card.playability.transactionOptions.first()
+            ) else PlayerMove(MoveType.DISCARD, card.name)
+            game.getCurrentTurnInfo().forEach {
+                if (it.playerIndex == mctsPlayerIndex) {
+                    game.prepareMove(
+                        it.playerIndex,
+                        move
+                    )
+                } else {
+                    discardAgent.getMoveToPerform(it)?.let { move -> game.prepareMove(it.playerIndex, move) }
+                }
+            }
+            game.playTurn()
+            game.getCurrentTurnInfo().find { it.playerIndex == state.playerIndex }!!.let { turninfo ->
+                State(
+                    state.playerIndex,
+                    state.tableStates + turninfo.table,
+                    when (val a = turninfo.action) {
+                        is TurnAction.PlayFromHand -> a.hand
+                        is TurnAction.WatchScore -> emptyList()
+                        else -> throw IllegalStateException("You arent handling this case: $a")
+                    },
+
+                    move
+                )
+            }
+        }
+
+        return gameStatesFromPlayableCards.map { { MCTS_Node(this, it, deterministicGameFactory) } }.toMutableList()
+    }
+
+    private fun createAndPlayGameToCurrentState(): Game {
+        val game = deterministicGameFactory()
+        val movesToPlay = state.tableStates.flatMap { it.lastPlayedMoves }
+        for (move in movesToPlay) {
+            game.prepareMove(move.playerIndex, PlayerMove(move.type, move.card.name, move.transactions))
+            if (game.allPlayersPreparedTheirMove()) {
+                game.playTurn()
+            }
+        }
+        return game
+    }
+
+    fun simulate(): Int {
+        val game = createAndPlayGameToCurrentState()
+        val randomAgent = RandomAgent()
+
+        while (!game.endOfGameReached()) {
+            game.getCurrentTurnInfo().forEach {
+                randomAgent.getMoveToPerform(it)?.let { move -> game.prepareMove(it.playerIndex, move) }
+            }
+            game.playTurn();
+        }
+
+        val scores = game.computeScore().scores.sortedByDescending { it.totalPoints }
+
+        return if (scores[0].playerIndex == state.playerIndex) 1 else 0
+    }
+
+
 }
 
 fun MCTS_Node.backpropagate(reward: Int) {
@@ -95,20 +208,14 @@ fun MCTS_Node.backpropagate(reward: Int) {
     parent?.backpropagate(reward)
 }
 
-fun MCTS_Node.simulate(): Int {
-    return testReward;
-}
 
 fun MCTS_Node.selectChild(): MCTS_Node {
 
-    if (!terminal) {
-        if (this.unvisitedChildrenFactories.isNotEmpty()) {
-            return expand()
-        }
-        val bestUCTchild = visitedChildren.maxBy { it.UCTscore() }
-        return bestUCTchild.selectChild()
+    if (this.unvisitedChildrenFactories.isNotEmpty()) {
+        return expand()
     }
-    return this;
+    val bestUCTchild = visitedChildren.maxByOrNull { it.UCTscore() }
+    return bestUCTchild?.selectChild() ?: this
 }
 
 fun MCTS_Node.expand(): MCTS_Node {
@@ -132,34 +239,87 @@ fun MCTS_Node.averageReward(): Double {
 }
 
 
+//fun mctsTest() {
+//    val gameDefinition = GameDefinition.load()
+//    val wonders = gameDefinition.allWonders.deal(3, Random(0))
+//
+//    val deterministicGameFactory = {
+//        gameDefinition.createGame(0, wonders, Settings(randomSeedForTests = 0))
+//    }
+//    val mcsts = MCTS(1000, deterministicGameFactory = deterministicGameFactory)
+//    mcsts.runSimulation {
+//        //printTree(it, 0)
+//        //readln()
+//        //println("-----------------------")
+//    }
+//    printTree(mcsts.root, 0)
+//}
+
+
 fun mctsTest() {
-    val mcsts = MCTS(0)
-    mcsts.runSimulation(100) {
-        printTree(it, 0)
-        readln()
-        println("-----------------------")
+    val agentCount = 3
+    val gameDefinition = GameDefinition.load()
+    val wonders = gameDefinition.allWonders.deal(agentCount, Random(0))
+
+    val lastPlayedMoves: MutableList<PlayedMove> = emptyList<PlayedMove>().toMutableList()
+
+    val deterministicGameFactory = {
+        val game = gameDefinition.createGame(0, wonders, Settings(randomSeedForTests = 0))
+        //until size - 3 as the last three is handled by the mcts agent
+        for (i in 0 until if (lastPlayedMoves.size - 3 <= 0) 0 else lastPlayedMoves.size - 3) {
+            val move = lastPlayedMoves[i]
+            game.prepareMove(move.playerIndex, PlayerMove(move.type, move.card.name, move.transactions))
+            if (game.allPlayersPreparedTheirMove()) {
+                game.playTurn()
+            }
+        }
+        game
     }
+
+
+    val mctsagent = MCTSAgent(0, 1000, deterministicGameFactory)
+    val agents = listOf(mctsagent, DiscardAgent(), DiscardAgent())
+
+    val game = deterministicGameFactory()
+
+    while (!game.endOfGameReached()) {
+        //readln()
+        game.getCurrentTurnInfo().forEach {
+            agents[it.playerIndex].getMoveToPerform(it)?.let { it1 -> game.prepareMove(it.playerIndex, it1) }
+            println("Player: " + it.playerIndex + " TurnAction: " + it.action)
+        }
+        game.playTurn()
+        lastPlayedMoves += game.getCurrentTurnInfo()[0].table.lastPlayedMoves
+
+        mctsagent.mcts?.let { printTree(it.root, 0) }
+    }
+    println(game.computeScore())
+
 }
 
 fun printTree(root: MCTS_Node, tabcount: Int) {
     println("\t".repeat(tabcount) + root.accumulatedReward)
     root.visitedChildren.forEach { printTree(it, tabcount + 1) }
-
 }
 
 fun envTest() {
 
     val agentCount = 3
 
-    val agents = listOf(DiscardAgent(), RandomAgent(), RandomAgent())
 
-    val game = GameDefinition.load().let {
-        val wonders = it.allWonders.deal(agentCount)
-        it.createGame(0, wonders, Settings())
+    val gameDefinition = GameDefinition.load()
+    val wonders = gameDefinition.allWonders.deal(agentCount, Random(0))
+
+    val deterministicGameFactory = {
+        gameDefinition.createGame(0, wonders, Settings(randomSeedForTests = 0))
     }
 
+    val agents = listOf(DiscardAgent(), RandomAgent(), RandomAgent())
+
+    val game = deterministicGameFactory()
+
     while (!game.endOfGameReached()) {
-        readln()
+        //readln()
         game.getCurrentTurnInfo().forEach {
             agents[it.playerIndex].getMoveToPerform(it)?.let { it1 -> game.prepareMove(it.playerIndex, it1) }
             println("Player: " + it.playerIndex + " TurnAction: " + it.action)
@@ -172,10 +332,13 @@ fun envTest() {
 }
 
 fun main() {
-    while (true) {
-        //envTest()
-        mctsTest()
-    }
+    //while (true) {
+    val startTime = System.nanoTime()
+    mctsTest()
+    val endTime = System.nanoTime()
+    println("Execution time: ${(endTime - startTime) / 1_000_000} ms")
+    //mctsTest(
+    // }
 }
 
 //fun main() {
