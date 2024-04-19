@@ -56,7 +56,7 @@ class RuleBasedRobot(private val random: Random = Random(0)) : Agent {
 }
 
 
-private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: Random = Random(0)): PlayerMove?{
+private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: Random = Random(0)): PlayerMove{
 
     val availablePlays = turnInfo.action.hand.filter {
         it.playability.isPlayable
@@ -83,11 +83,11 @@ private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: 
                 prioQ.offer(QCard(i,5))
             }
             Color.RED -> {
-                var myReds: Int = 0
-                var ennemyReds: Int = 0
+                var myReds= 0
+                var ennemyReds= 0
                 for(board in turnInfo.table.boards){
                     if(board.playerIndex == turnInfo.playerIndex){
-                        myReds = board.military.nbShields;
+                        myReds = board.military.nbShields
                     }else{
                         ennemyReds = if(ennemyReds > board.military.nbShields) ennemyReds else board.military.nbShields
                     }
@@ -369,7 +369,7 @@ class MCTS_Node(
             game.getCurrentTurnInfo().forEach {
                 randomAgent.getMoveToPerform(it)?.let { move -> game.prepareMove(it.playerIndex, move) }
             }
-            game.playTurn();
+            game.playTurn()
         }
 
         val scores = game.computeScore().scores.sortedByDescending { it.totalPoints }
@@ -398,7 +398,7 @@ fun MCTS_Node.selectChild(): MCTS_Node {
 
 fun MCTS_Node.expand(): MCTS_Node {
     val nodeFactory = unvisitedChildrenFactories.removeFirst()
-    val newChild = nodeFactory();
+    val newChild = nodeFactory()
     visitedChildren.add(newChild)
     return newChild
 }
