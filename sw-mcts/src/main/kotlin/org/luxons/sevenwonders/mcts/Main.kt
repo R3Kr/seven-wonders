@@ -514,12 +514,11 @@ fun Decks.getScrambledDeckForPlayer(
     )
 }
 
-fun mctsTest(gameDefinition: GameDefinition, id: Int, debugPrinting: Boolean = false): ScoreBoard {
-
-
+data class TestResult(val gameId: Int, val playouts: Int, val playedMoves: List<PlayedMove>, val scoreBoard: ScoreBoard)
+fun mctsTest(gameDefinition: GameDefinition, id: Int, playouts: Int, debugPrinting: Boolean = false): TestResult {
     val gameFactoryFactory = NonCheatingDeterministicGameFactoryFactory(gameDefinition, id)
 
-    val mctsagent = MCTSAgent(0, 10, gameFactoryFactory)
+    val mctsagent = MCTSAgent(0, playouts, gameFactoryFactory)
 
     val agents = listOf(mctsagent, RandomAgent(id), RandomAgent(id))
 
@@ -536,7 +535,7 @@ fun mctsTest(gameDefinition: GameDefinition, id: Int, debugPrinting: Boolean = f
 
         if (debugPrinting) mctsagent.mcts?.let { printTree(it.root, 0) }
     }
-    return game.computeScore()
+    return TestResult(id, playouts, gameFactoryFactory.lastPlayedMoves, game.computeScore())
 
 }
 
@@ -578,16 +577,17 @@ fun main() {
     val gameDefinition = GameDefinition.loadWithRemovedWonders(listOf("Babylon", "Halikarnassus", "Olympia"))
     //while (true) {
     val startTime = System.nanoTime()
-    val tests = (0 until 100).map {
+    val tests = (0 until 400).map {
         {
             println("Game $it started")
-            val res = mctsTest(gameDefinition, it)
+            val numberOfPlayouts = if (it < 100) 10 else if (it < 200) 20 else if (it < 300) 40 else 80
+            val res = mctsTest(gameDefinition, it, numberOfPlayouts)
             println("Game $it ended")
             res
         }
     }
     val results = tests.parallelStream().map { it() }.toList()
-    results.forEach { println(it) }
+    results.forEach { println(it.scoreBoard) }
     val endTime = System.nanoTime()
     println("Execution time: ${(endTime - startTime) / 1_000_000} ms")
     //mctsTest(
