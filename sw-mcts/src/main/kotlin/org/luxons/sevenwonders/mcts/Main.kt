@@ -699,7 +699,7 @@ fun main() {
     val gameDefinition = GameDefinition.loadWithRemovedWonders(listOf("Babylon", "Halikarnassus", "Olympia"))
     val scoresStream = FileOutputStream("scores.csv", true)
     val writer = scoresStream.bufferedWriter()
-    writer.write("gameid,playerindex,wondername,boardGold,CIVIL,MILITARY,SCIENCE,TRADE,GUILD,WONDER,GOLD")
+    writer.write("gameid,playouts,playerindex,wondername,boardGold,CIVIL,MILITARY,SCIENCE,TRADE,GUILD,WONDER,GOLD")
     writer.newLine()
     writer.flush()
     val playedMovesStream = FileOutputStream("playedmoves.csv", true)
@@ -734,7 +734,7 @@ fun OutputStream.writeCsvScores(data: TestResult) {
     //writer.newLine()
 
     data.scoreBoard.scores.forEach {
-        writer.write("${data.gameId},${it.playerIndex},${data.wonders[it.playerIndex].name + data.wonders[it.playerIndex].side},${it.boardGold},${it.pointsByCategory[ScoreCategory.CIVIL]},${it.pointsByCategory[ScoreCategory.MILITARY]},${it.pointsByCategory[ScoreCategory.SCIENCE]},${it.pointsByCategory[ScoreCategory.TRADE]},${it.pointsByCategory[ScoreCategory.GUILD]},${it.pointsByCategory[ScoreCategory.WONDER]},${it.pointsByCategory[ScoreCategory.GOLD]}")
+        writer.write("${data.gameId},${data.playouts},${it.playerIndex},${data.wonders[it.playerIndex].name + data.wonders[it.playerIndex].side},${it.boardGold},${it.pointsByCategory[ScoreCategory.CIVIL]},${it.pointsByCategory[ScoreCategory.MILITARY]},${it.pointsByCategory[ScoreCategory.SCIENCE]},${it.pointsByCategory[ScoreCategory.TRADE]},${it.pointsByCategory[ScoreCategory.GUILD]},${it.pointsByCategory[ScoreCategory.WONDER]},${it.pointsByCategory[ScoreCategory.GOLD]}")
         writer.newLine()
     }
 
