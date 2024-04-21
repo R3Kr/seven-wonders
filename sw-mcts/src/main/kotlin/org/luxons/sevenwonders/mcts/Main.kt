@@ -570,7 +570,6 @@ fun envTest() {
     }
     println(game.computeScore())
 
-
 }
 
 fun main() {
