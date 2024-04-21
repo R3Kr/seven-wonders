@@ -251,8 +251,10 @@ class Game internal constructor(
         ScoreBoard(table.boards.map { it.computeScore(players[it.playerIndex]) }.sortedDescending())
 
     fun getWinner(): Int =
-        table.boards.map { it.computeScore(players[it.playerIndex]) }.sortedDescending().get(0).playerIndex
+        table.boards.map { it.computeScore(players[it.playerIndex]) }.sortedDescending()[0].playerIndex
 
+    fun getPoints(i: Int): Int =
+        table.boards[i].computeScore(players[i]).totalPoints
 
 
     private class MissingPreparedMoveException(playerIndex: Int) :

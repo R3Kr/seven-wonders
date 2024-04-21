@@ -6,11 +6,42 @@ import org.luxons.sevenwonders.model.*
 import org.luxons.sevenwonders.model.cards.Color
 import org.luxons.sevenwonders.model.cards.HandCard
 import org.luxons.sevenwonders.model.wonders.deal
+import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.*
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+
+
+data class Data(
+    val win: Boolean,
+    val points: Int,
+    val playouts: Int
+)
+
+
+fun OutputStream.writeCsv(data: List<Data>){
+    val writer = bufferedWriter()
+    //writer.write(""""Win","Points","playouts""")
+    //writer.newLine()
+    data.forEach {
+        writer.write("${it.win}, ${it.points}, ${it.playouts}")
+        writer.newLine()
+    }
+    writer.flush()
+}
+
+fun OutputStream.writeCsvPlays(plays: List<PlayerMove>){
+    val writer = bufferedWriter()
+    plays.forEach{
+        writer.write("${it.cardName},${it.type.name}")
+        writer.newLine()
+    }
+    writer.flush()
+}
 
 interface Agent {
     fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove?
@@ -26,9 +57,9 @@ class DiscardAgent : Agent {
     }
 
 }
-
 @Suppress("UNCHECKED_CAST")
 class RuleBasedRobot(private val random: Random = Random(0)) : Agent {
+
     override fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove? {
         return when (val a = turnInfo.action){
             is TurnAction.PlayFromHand -> {
@@ -65,10 +96,12 @@ private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: 
     class QCard(val handCard: HandCard, val prio: Int)
 
     val prioQ = PriorityQueue<QCard>{a, b -> a.prio - b.prio}
+    //val playerBoard = turnInfo.table.boards[turnInfo.playerIndex]
 
     for (i in availablePlays){
         when (i.color){
             Color.BROWN -> {
+
                 if((0..1).random(random) == 0){
                     prioQ.offer(QCard(i,2))
                 }
@@ -101,7 +134,7 @@ private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: 
                 prioQ.offer(QCard(i,4))
             }
             Color.PURPLE -> {
-                prioQ.offer(QCard(i,5))
+                prioQ.offer(QCard(i,4))
             }
         }
     }
@@ -484,6 +517,7 @@ fun envTest() {
 
     val agentCount = 3
 
+    val data: MutableList<Data> = mutableListOf()
 
     val gameDefinition = GameDefinition.load()
     val wonders = gameDefinition.allWonders.deal(agentCount, Random(0))
@@ -505,15 +539,20 @@ fun envTest() {
         game.playTurn()
     }
     println(game.computeScore())
-
+    //2 is the bot that we ar looking after
+    val botIndex = 2
+    data.add(Data(game.getWinner() == botIndex,game.getPoints(botIndex),1000))
+    FileOutputStream("data/test.csv",true).apply {writeCsv(data)}
+    //FileOutputStream("data/testDiscard.csv",true).apply { writeCsvPlays() }
 
 }
 
 fun main() {
     //while (true) {
     val startTime = System.nanoTime()
-    val tests = listOf({ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() })
-    tests.parallelStream().forEach { it() }
+    //val tests = listOf({ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() })
+    //tests.parallelStream().forEach { it() }
+    envTest()
     val endTime = System.nanoTime()
     println("Execution time: ${(endTime - startTime) / 1_000_000} ms")
     //mctsTest(
