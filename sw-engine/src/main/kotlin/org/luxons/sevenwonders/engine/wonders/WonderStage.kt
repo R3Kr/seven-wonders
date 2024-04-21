@@ -7,7 +7,7 @@ import org.luxons.sevenwonders.engine.effects.Effect
 import org.luxons.sevenwonders.model.cards.CardBack
 import org.luxons.sevenwonders.model.resources.ResourceTransactions
 
-internal class WonderStage(
+class WonderStage(
     val requirements: Requirements,
     val effects: List<Effect>,
 ) {

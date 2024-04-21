@@ -13,7 +13,7 @@ import org.luxons.sevenwonders.model.cards.Color
 import org.luxons.sevenwonders.model.score.PlayerScore
 import org.luxons.sevenwonders.model.score.ScoreCategory
 
-internal class Board(
+class Board(
     val wonder: Wonder,
     val playerIndex: Int,
     settings: Settings,

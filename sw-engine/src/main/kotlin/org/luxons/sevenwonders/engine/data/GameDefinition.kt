@@ -1,7 +1,6 @@
 package org.luxons.sevenwonders.engine.data
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import org.luxons.sevenwonders.engine.Game
 import org.luxons.sevenwonders.engine.boards.Board
@@ -36,14 +35,15 @@ class GameDefinition internal constructor(
 
     fun createGame(id: Long, wonders: Collection<AssignedWonder>, settings: Settings): Game {
         val nbPlayers = wonders.size
-        val boards = wonders.mapIndexed { index, wonder -> wonder.createBoard(index, settings) }
+        val boards = wonders.mapIndexed { index, wonder -> createBoard(index, wonder, settings) }
         val decks = decksDefinition.prepareDecks(nbPlayers, settings.random)
         return Game(id, settings, boards, decks)
     }
 
-    private fun AssignedWonder.createBoard(playerIndex: Int, settings: Settings): Board {
-        val wonder = wondersByName[name] ?: error("Unknown wonder '$name'")
-        return Board(wonder.create(side), playerIndex, settings)
+    //not private anymore, needed in noncheating gamefactory
+    fun createBoard(playerIndex: Int, asswonder: AssignedWonder, settings: Settings): Board {
+        val wonder = wondersByName[asswonder.name] ?: error("Unknown wonder '${asswonder.name}'")
+        return Board(wonder.create(asswonder.side), playerIndex, settings)
     }
 
     companion object {
@@ -53,6 +53,15 @@ class GameDefinition internal constructor(
             val wonders = loadJson<Array<WonderDefinition>>("wonders.json")
             val decksDefinition = loadJson<DecksDefinition>("cards.json")
             return GameDefinition(rules, wonders.toList(), decksDefinition)
+        }
+
+        fun loadWithRemovedWonders(wondersToFilter: List<String>): GameDefinition {
+            val rules = loadJson<GlobalRules>("global_rules.json")
+            val wonders = loadJson<Array<WonderDefinition>>("wonders.json").let {
+                it.filterNot { wd -> wondersToFilter.any { it == wd.name } }
+            }
+            val decksDefinition = loadJson<DecksDefinition>("cards.json")
+            return GameDefinition(rules, wonders, decksDefinition)
         }
     }
 }

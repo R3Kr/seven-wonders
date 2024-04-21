@@ -5,7 +5,7 @@ import org.luxons.sevenwonders.model.resources.ResourceTransaction
 import org.luxons.sevenwonders.model.resources.ResourceTransactions
 import org.luxons.sevenwonders.model.resources.ResourceType
 
-internal class TradingRules(private val defaultCost: Int) {
+class TradingRules(private val defaultCost: Int) {
 
     private val costs: MutableMap<ResourceType, MutableMap<Provider, Int>> = mutableMapOf()
 

@@ -10,7 +10,7 @@ import org.luxons.sevenwonders.model.cards.PlayabilityLevel
 import org.luxons.sevenwonders.model.resources.ResourceTransactions
 import org.luxons.sevenwonders.model.resources.singleOptionNoTransactionNeeded
 
-internal data class Card(
+data class Card(
     val name: String,
     val color: Color,
     val requirements: Requirements,
