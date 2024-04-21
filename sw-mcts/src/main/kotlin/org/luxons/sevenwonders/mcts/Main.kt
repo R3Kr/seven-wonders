@@ -720,8 +720,9 @@ fun main() {
             res
         }
     }
-    val results = tests.parallelStream().map { it() }.toList()
-    results.forEach { println(it.scoreBoard) }
+    //val results = tests.parallelStream().map { it() }.toList()
+    //results.forEach { println(it.scoreBoard) }
+    tests.parallelStream().forEach { it() }
     val endTime = System.nanoTime()
     println("Execution time: ${(endTime - startTime) / 1_000_000} ms")
     //mctsTest(
