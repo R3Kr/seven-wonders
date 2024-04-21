@@ -251,6 +251,13 @@ class Game(
     fun computeScore(): ScoreBoard =
         ScoreBoard(table.boards.map { it.computeScore(players[it.playerIndex]) }.sortedDescending())
 
+    fun getWinner(): Int =
+        table.boards.map { it.computeScore(players[it.playerIndex]) }.sortedDescending()[0].playerIndex
+
+    fun getPoints(i: Int): Int =
+        table.boards[i].computeScore(players[i]).totalPoints
+
+
     private class MissingPreparedMoveException(playerIndex: Int) :
         IllegalStateException("Player $playerIndex has not prepared his move")
 }
