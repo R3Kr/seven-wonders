@@ -5,7 +5,7 @@ import org.luxons.sevenwonders.engine.boards.Table
 import org.luxons.sevenwonders.engine.cards.Card
 import org.luxons.sevenwonders.model.boards.RelativeBoardPosition
 
-internal interface Player {
+interface Player {
     val index: Int
     val board: Board
     fun getBoard(relativePosition: RelativeBoardPosition): Board
