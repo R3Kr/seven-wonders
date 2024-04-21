@@ -5,17 +5,137 @@ import org.luxons.sevenwonders.engine.cards.Card
 import org.luxons.sevenwonders.engine.cards.Decks
 import org.luxons.sevenwonders.engine.data.GameDefinition
 import org.luxons.sevenwonders.model.*
+import org.luxons.sevenwonders.model.cards.Color
 import org.luxons.sevenwonders.model.cards.HandCard
 import org.luxons.sevenwonders.model.score.ScoreBoard
 import org.luxons.sevenwonders.model.wonders.deal
+import java.io.OutputStream
+import java.util.*
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.streams.toList
 
 
+
+data class Data(
+    val win: Boolean,
+    val points: Int,
+    val playouts: Int
+)
+
+
+fun OutputStream.writeCsv(data: List<Data>){
+    val writer = bufferedWriter()
+    //writer.write(""""Win","Points","playouts""")
+    //writer.newLine()
+    data.forEach {
+        writer.write("${it.win}, ${it.points}, ${it.playouts}")
+        writer.newLine()
+    }
+    writer.flush()
+}
+
+fun OutputStream.writeCsvPlays(plays: List<PlayerMove>){
+    val writer = bufferedWriter()
+    plays.forEach{
+        writer.write("${it.cardName},${it.type.name}")
+        writer.newLine()
+    }
+    writer.flush()
+}
 interface Agent {
     fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove?
+}
+
+@Suppress("UNCHECKED_CAST")
+class RuleBasedRobot(private val random: Random = Random(0)) : Agent {
+
+    override fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove? {
+        return when (val a = turnInfo.action){
+            is TurnAction.PlayFromHand -> {
+                if(turnInfo.wonderBuildability.isBuildable){
+                    if (turnInfo.wonderBuildability.isFree) PlayerMove(
+                        MoveType.UPGRADE_WONDER,
+                        a.hand.first().name
+                    )
+                    else {
+                        if((0..1).random(random) > 0) PlayerMove(
+                            MoveType.UPGRADE_WONDER,
+                            a.hand.first().name,
+                            turnInfo.wonderBuildability.transactionsOptions.first()) else pickCard(turnInfo as PlayerTurnInfo<TurnAction.PlayFromHand>)
+
+
+                    }
+
+                }else pickCard(turnInfo as PlayerTurnInfo<TurnAction.PlayFromHand>)
+            }
+            else -> null
+        }
+
+
+    }
+}
+
+
+private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: Random = Random(0)): PlayerMove{
+
+    val availablePlays = turnInfo.action.hand.filter {
+        it.playability.isPlayable
+    }.toMutableList()
+
+    class QCard(val handCard: HandCard, val prio: Int)
+
+    val prioQ = PriorityQueue<QCard>{a, b -> a.prio - b.prio}
+    //val playerBoard = turnInfo.table.boards[turnInfo.playerIndex]
+
+    for (i in availablePlays){
+        when (i.color){
+            Color.BROWN -> {
+
+                if((0..1).random(random) == 0){
+                    prioQ.offer(QCard(i,2))
+                }
+                else{
+                    prioQ.offer(QCard(i,5))
+                }
+            }
+            Color.GREY -> {
+                prioQ.offer(QCard(i,5))
+            }
+            Color.YELLOW -> {
+                prioQ.offer(QCard(i,5))
+            }
+            Color.RED -> {
+                var myReds= 0
+                var ennemyReds= 0
+                for(board in turnInfo.table.boards){
+                    if(board.playerIndex == turnInfo.playerIndex){
+                        myReds = board.military.nbShields
+                    }else{
+                        ennemyReds = if(ennemyReds > board.military.nbShields) ennemyReds else board.military.nbShields
+                    }
+                    if(ennemyReds > myReds) prioQ.offer(QCard(i,1))
+                }
+            }
+            Color.BLUE -> {
+                prioQ.offer(QCard(i,3))
+            }
+            Color.GREEN -> {
+                prioQ.offer(QCard(i,4))
+            }
+            Color.PURPLE -> {
+                prioQ.offer(QCard(i,4))
+            }
+        }
+    }
+
+    if(availablePlays.isEmpty() || prioQ.peek() == null){
+        return PlayerMove(MoveType.DISCARD, turnInfo.action.hand.first().name)
+    }
+
+    return PlayerMove(MoveType.PLAY, prioQ.peek().handCard.name, prioQ.peek().handCard.playability.transactionOptions.first())
+
 }
 
 class DiscardAgent : Agent {
