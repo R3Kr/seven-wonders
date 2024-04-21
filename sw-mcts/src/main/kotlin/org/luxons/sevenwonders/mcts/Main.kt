@@ -1,10 +1,13 @@
 package org.luxons.sevenwonders.mcts
 
 import org.luxons.sevenwonders.engine.Game
+import org.luxons.sevenwonders.engine.cards.Card
+import org.luxons.sevenwonders.engine.cards.Decks
 import org.luxons.sevenwonders.engine.data.GameDefinition
 import org.luxons.sevenwonders.model.*
 import org.luxons.sevenwonders.model.cards.Color
 import org.luxons.sevenwonders.model.cards.HandCard
+import org.luxons.sevenwonders.model.score.ScoreBoard
 import org.luxons.sevenwonders.model.wonders.deal
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -13,6 +16,7 @@ import java.util.*
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.random.Random
+import kotlin.streams.toList
 
 
 
@@ -179,7 +183,11 @@ class RandomAgent : Agent {
 
 }
 
-class MCTSAgent(val playerIndex: Int, val simulationCount: Int, val deterministicGameFactory: GameFactory) : Agent {
+class MCTSAgent(
+    val playerIndex: Int,
+    val simulationCount: Int,
+    val deterministicGameFactoryFactory: NonCheatingDeterministicGameFactoryFactory
+) : Agent {
     var mcts: MCTS? = null
     override fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove? {
 
@@ -187,8 +195,20 @@ class MCTSAgent(val playerIndex: Int, val simulationCount: Int, val deterministi
             is TurnAction.PlayFromHand -> {
                 mcts = MCTS(
                     simulationCount,
-                    State(playerIndex, listOf(turnInfo), PlayerMove(MoveType.DISCARD, ""), a.hand),
-                    deterministicGameFactory
+                    State(
+                        playerIndex,
+                        playerOneIndex,
+                        playerTwoIndex,
+                        listOf(turnInfo),
+                        PlayerMove(MoveType.DISCARD, ""),
+                        a.hand
+                    ),
+                    deterministicGameFactoryFactory.getFactory(
+                        age = ((deterministicGameFactoryFactory.lastPlayedMoves.size / 3) / 6) + 1,
+                        //7w is only imperfect information on first turn of each age
+                        perfectInformation = (deterministicGameFactoryFactory.lastPlayedMoves.size / 3) % 6 != 0
+                    )
+
                 )
                 val bestChild = mcts?.runSimulation { }
                 bestChild?.state?.correspondingPlayerMove
@@ -204,15 +224,21 @@ class MCTSAgent(val playerIndex: Int, val simulationCount: Int, val deterministi
 
 
 data class State(
-    val playerIndex: Int,
+    val mctsIndex: Int,
+    val player1Index: Int,
+    val player2Index: Int,
     val turnInfos: List<PlayerTurnInfo<*>>,
     val correspondingPlayerMove: PlayerMove,
     val mctsHand: List<HandCard>,
-    val player1Hand: List<HandCard>? = null,
-    val player2Hand: List<HandCard>? = null
+    val otherHands: OtherTurnInfos? = null
 )
 
-class MCTS(val simulationCount: Int, state: State, deterministicGameFactory: GameFactory) {
+class MCTS(
+    val simulationCount: Int,
+    state: State,
+    deterministicGameFactory: GameFactory,
+    val debugPrinting: Boolean = false
+) {
     val root = MCTS_Node(null, state, deterministicGameFactory)
 }
 
@@ -230,7 +256,13 @@ fun MCTS.runSimulation(
 }
 
 private fun MCTS.bestChild(): MCTS_Node {
-    return root.visitedChildren.maxBy { it.accumulatedReward }
+
+    val playerMoveToReward = root.visitedChildren.groupBy { it.state.correspondingPlayerMove }.map {
+        Pair(it.key, it.value.sumOf { it.accumulatedReward })
+    }
+    if (debugPrinting) println(playerMoveToReward)
+    val bestMove = playerMoveToReward.maxBy { it.second }
+    return root.visitedChildren.first { it.state.correspondingPlayerMove == bestMove.first }
 }
 
 typealias MCTS_NodeFactory = () -> MCTS_Node
@@ -324,6 +356,7 @@ class MCTS_Node(
             )
         }
     }
+
 
     private fun createUnvisitedChildrenFactories(): MutableList<MCTS_NodeFactory> {
 
@@ -467,44 +500,115 @@ fun MCTS_Node.averageReward(): Double {
 //}
 
 
-fun mctsTest() {
-    val agentCount = 3
-    val gameDefinition = GameDefinition.load()
-    val wonders = gameDefinition.allWonders.deal(agentCount, Random(0))
-
+class NonCheatingDeterministicGameFactoryFactory(val gameDefinition: GameDefinition, private val seed: Int = 0) {
     val lastPlayedMoves: MutableList<PlayedMove> = emptyList<PlayedMove>().toMutableList()
+    val wonders = gameDefinition.allWonders.deal(3, Random(seed))
 
-    val deterministicGameFactory = {
-        val game = gameDefinition.createGame(0, wonders, Settings(randomSeedForTests = 0))
-        //until size - 3 as the last three is handled by the mcts agent
-        for (i in 0 until if (lastPlayedMoves.size - 3 <= 0) 0 else lastPlayedMoves.size - 3) {
-            val move = lastPlayedMoves[i]
-            game.prepareMove(move.playerIndex, PlayerMove(move.type, move.card.name, move.transactions))
-            if (game.allPlayersPreparedTheirMove()) {
-                game.playTurn()
+    //age 3 perfect informatioun will be the realGame
+    fun getFactory(age: Int = 3, perfectInformation: Boolean = true): GameFactory {
+        return {
+            val game = gameDefinition.createGame(0, wonders, Settings(randomSeedForTests = seed.toLong())).let {
+                val newdeck = it.decks.getScrambledDeckForPlayer(0, age, !perfectInformation, Random(seed))
+                Game(
+                    1,
+                    Settings(),
+                    wonders.mapIndexed { index, wonder ->
+                        gameDefinition.createBoard(
+                            index,
+                            wonder,
+                            Settings(seed.toLong())
+                        )
+                    },
+                    newdeck
+                )
             }
+
+            //until size - 3 as the last three is handled by the mcts agent
+            for (i in 0 until if (lastPlayedMoves.size - 3 <= 0) 0 else lastPlayedMoves.size - 3) {
+                val move = lastPlayedMoves[i]
+                game.prepareMove(move.playerIndex, PlayerMove(move.type, move.card.name, move.transactions))
+                if (game.allPlayersPreparedTheirMove()) {
+                    game.playTurn()
+                }
+            }
+            game
         }
-        game
+    }
+
+}
+
+
+fun List<Card>.scrambleExceptIndexedModulo(playerIndex: Int, random: Random): List<Card> {
+    val playerCards = filterIndexed { index, _ -> index % 3 == playerIndex }
+
+    val otherShuffledCards =
+        filterIndexed { index, _ -> index % 3 != playerIndex }.shuffled(random).toMutableList()
+
+    //temp
+    assert(playerIndex == 0)
+
+    val newListOfCardsForAge = mutableListOf<Card>()
+    for (card in playerCards) {
+        newListOfCardsForAge += card
+        newListOfCardsForAge += otherShuffledCards.removeFirst()
+        newListOfCardsForAge += otherShuffledCards.removeFirst()
+    }
+    return newListOfCardsForAge
+}
+
+fun Decks.getScrambledDeckForPlayer(
+    playerIndex: Int,
+    age: Int,
+    scrambleAge: Boolean,
+    random: Random
+): Decks {
+    val age1cards = getDeck(1).let {
+        if (age == 1 && scrambleAge) it.scrambleExceptIndexedModulo(playerIndex, random) else it
+    }
+    val age2cards = getDeck(2).let {
+        if (age < 2) it.shuffled(random) else if (age == 2 && scrambleAge) it.scrambleExceptIndexedModulo(
+            playerIndex,
+            random
+        ) else it
+    }
+    val age3cards = getDeck(3).let {
+        if (age < 3) it.shuffled(random) else if (age == 3 && scrambleAge) it.scrambleExceptIndexedModulo(
+            playerIndex, random
+        ) else it
     }
 
 
-    val mctsagent = MCTSAgent(0, 13, deterministicGameFactory)
-    val agents = listOf(mctsagent, RandomAgent(), RandomAgent())
+    return Decks(
+        mapOf(
+            1 to age1cards,
+            2 to age2cards,
+            3 to age3cards,
+        )
+    )
+}
 
-    val game = deterministicGameFactory()
+data class TestResult(val gameId: Int, val playouts: Int, val playedMoves: List<PlayedMove>, val scoreBoard: ScoreBoard)
+fun mctsTest(gameDefinition: GameDefinition, id: Int, playouts: Int, debugPrinting: Boolean = false): TestResult {
+    val gameFactoryFactory = NonCheatingDeterministicGameFactoryFactory(gameDefinition, id)
+
+    val mctsagent = MCTSAgent(0, playouts, gameFactoryFactory)
+
+    val agents = listOf(mctsagent, RandomAgent(id), RandomAgent(id))
+
+    val game = gameFactoryFactory.getFactory()()
 
     while (!game.endOfGameReached()) {
         //readln()
         game.getCurrentTurnInfo().forEach {
             agents[it.playerIndex].getMoveToPerform(it)?.let { it1 -> game.prepareMove(it.playerIndex, it1) }
-            println("Player: " + it.playerIndex + " TurnAction: " + it.action)
+            if (debugPrinting) println("Player: " + it.playerIndex + " TurnAction: " + it.action)
         }
         game.playTurn()
-        lastPlayedMoves += game.getCurrentTurnInfo()[0].table.lastPlayedMoves
+        gameFactoryFactory.lastPlayedMoves += game.getCurrentTurnInfo()[0].table.lastPlayedMoves
 
-        mctsagent.mcts?.let { printTree(it.root, 0) }
+        if (debugPrinting) mctsagent.mcts?.let { printTree(it.root, 0) }
     }
-    println(game.computeScore())
+    return TestResult(id, playouts, gameFactoryFactory.lastPlayedMoves, game.computeScore())
 
 }
 
@@ -539,20 +643,32 @@ fun envTest() {
         game.playTurn()
     }
     println(game.computeScore())
+
     //2 is the bot that we ar looking after
     val botIndex = 2
     data.add(Data(game.getWinner() == botIndex,game.getPoints(botIndex),1000))
     FileOutputStream("data/test.csv",true).apply {writeCsv(data)}
     //FileOutputStream("data/testDiscard.csv",true).apply { writeCsvPlays() }
 
+
 }
 
 fun main() {
+    val gameDefinition = GameDefinition.loadWithRemovedWonders(listOf("Babylon", "Halikarnassus", "Olympia"))
     //while (true) {
     val startTime = System.nanoTime()
-    //val tests = listOf({ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() },{ mctsTest() })
-    //tests.parallelStream().forEach { it() }
-    envTest()
+
+    val tests = (0 until 400).map {
+        {
+            println("Game $it started")
+            val numberOfPlayouts = if (it < 100) 10 else if (it < 200) 20 else if (it < 300) 40 else 80
+            val res = mctsTest(gameDefinition, it, numberOfPlayouts)
+            println("Game $it ended")
+            res
+        }
+    }
+    val results = tests.parallelStream().map { it() }.toList()
+    results.forEach { println(it.scoreBoard) }
     val endTime = System.nanoTime()
     println("Execution time: ${(endTime - startTime) / 1_000_000} ms")
     //mctsTest(

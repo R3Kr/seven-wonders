@@ -9,7 +9,7 @@ internal fun List<Card>.deal(nbPlayers: Int): Hands {
     return Hands(allHands)
 }
 
-internal class Decks(private val cardsPerAge: Map<Int, List<Card>>) {
+class Decks(private val cardsPerAge: Map<Int, List<Card>>) {
 
     fun getCard(age: Int, cardName: String): Card =
         getDeck(age).firstOrNull { c -> c.name == cardName } ?: throw CardNotFoundException(cardName)
@@ -20,7 +20,8 @@ internal class Decks(private val cardsPerAge: Map<Int, List<Card>>) {
         return deck.deal(nbPlayers)
     }
 
-    private fun getDeck(age: Int): List<Card> {
+    //getDeck need to be public for noncheating game factory
+    fun getDeck(age: Int): List<Card> {
         return cardsPerAge[age] ?: throw IllegalArgumentException("No deck found for age $age")
     }
 

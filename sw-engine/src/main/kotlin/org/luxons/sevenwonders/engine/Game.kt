@@ -16,11 +16,12 @@ import org.luxons.sevenwonders.model.cards.CardBack
 import org.luxons.sevenwonders.model.cards.HandCard
 import org.luxons.sevenwonders.model.score.ScoreBoard
 
-class Game internal constructor(
+class Game(
     val id: Long,
     private val settings: Settings,
     boards: List<Board>,
-    private val decks: Decks,
+    //this need not to be private to make sure the mcts can not cheat
+    val decks: Decks,
 ) {
     private val table: Table = Table(boards)
     private val players: List<Player> = boards.map { SimplePlayer(it.playerIndex, table) }

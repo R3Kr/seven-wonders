@@ -10,7 +10,7 @@ import org.luxons.sevenwonders.model.resources.ResourceType
 import org.luxons.sevenwonders.model.resources.noTransactionOptions
 import org.luxons.sevenwonders.model.wonders.WonderBuildability
 
-internal class Wonder(
+class Wonder(
     val name: String,
     val initialResource: ResourceType,
     val stages: List<WonderStage>,

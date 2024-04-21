@@ -6,7 +6,7 @@ enum class ScienceType {
     TABLET
 }
 
-internal class Science {
+class Science {
 
     private val quantities: MutableMap<ScienceType, Int> = mutableMapOf()
 
