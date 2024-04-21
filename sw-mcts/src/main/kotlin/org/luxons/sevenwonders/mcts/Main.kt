@@ -4,18 +4,20 @@ import org.luxons.sevenwonders.engine.Game
 import org.luxons.sevenwonders.engine.cards.Card
 import org.luxons.sevenwonders.engine.cards.Decks
 import org.luxons.sevenwonders.engine.data.GameDefinition
+import org.luxons.sevenwonders.engine.wonders.Wonder
 import org.luxons.sevenwonders.model.*
 import org.luxons.sevenwonders.model.cards.Color
 import org.luxons.sevenwonders.model.cards.HandCard
 import org.luxons.sevenwonders.model.score.ScoreBoard
+import org.luxons.sevenwonders.model.score.ScoreCategory
+import org.luxons.sevenwonders.model.wonders.AssignedWonder
 import org.luxons.sevenwonders.model.wonders.deal
+import java.io.FileOutputStream
 import java.io.OutputStream
 import java.util.*
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.random.Random
-import kotlin.streams.toList
-
 
 
 data class Data(
@@ -25,51 +27,35 @@ data class Data(
 )
 
 
-fun OutputStream.writeCsv(data: List<Data>){
-    val writer = bufferedWriter()
-    //writer.write(""""Win","Points","playouts""")
-    //writer.newLine()
-    data.forEach {
-        writer.write("${it.win}, ${it.points}, ${it.playouts}")
-        writer.newLine()
-    }
-    writer.flush()
-}
-
-fun OutputStream.writeCsvPlays(plays: List<PlayerMove>){
-    val writer = bufferedWriter()
-    plays.forEach{
-        writer.write("${it.cardName},${it.type.name}")
-        writer.newLine()
-    }
-    writer.flush()
-}
 interface Agent {
     fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove?
 }
 
 @Suppress("UNCHECKED_CAST")
-class RuleBasedRobot(private val random: Random = Random(0)) : Agent {
+class RuleBasedRobot(seed: Int = 0) : Agent {
+    private val random = Random(seed)
 
     override fun getMoveToPerform(turnInfo: PlayerTurnInfo<*>): PlayerMove? {
-        return when (val a = turnInfo.action){
+        return when (val a = turnInfo.action) {
             is TurnAction.PlayFromHand -> {
-                if(turnInfo.wonderBuildability.isBuildable){
+                if (turnInfo.wonderBuildability.isBuildable) {
                     if (turnInfo.wonderBuildability.isFree) PlayerMove(
                         MoveType.UPGRADE_WONDER,
                         a.hand.first().name
                     )
                     else {
-                        if((0..1).random(random) > 0) PlayerMove(
+                        if ((0..1).random(random) > 0) PlayerMove(
                             MoveType.UPGRADE_WONDER,
                             a.hand.first().name,
-                            turnInfo.wonderBuildability.transactionsOptions.first()) else pickCard(turnInfo as PlayerTurnInfo<TurnAction.PlayFromHand>)
+                            turnInfo.wonderBuildability.transactionsOptions.first()
+                        ) else pickCard(turnInfo as PlayerTurnInfo<TurnAction.PlayFromHand>)
 
 
                     }
 
-                }else pickCard(turnInfo as PlayerTurnInfo<TurnAction.PlayFromHand>)
+                } else pickCard(turnInfo as PlayerTurnInfo<TurnAction.PlayFromHand>)
             }
+
             else -> null
         }
 
@@ -78,7 +64,7 @@ class RuleBasedRobot(private val random: Random = Random(0)) : Agent {
 }
 
 
-private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: Random = Random(0)): PlayerMove{
+private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: Random = Random(0)): PlayerMove {
 
     val availablePlays = turnInfo.action.hand.filter {
         it.playability.isPlayable
@@ -86,55 +72,64 @@ private fun pickCard(turnInfo: PlayerTurnInfo<TurnAction.PlayFromHand>, random: 
 
     class QCard(val handCard: HandCard, val prio: Int)
 
-    val prioQ = PriorityQueue<QCard>{a, b -> a.prio - b.prio}
+    val prioQ = PriorityQueue<QCard> { a, b -> a.prio - b.prio }
     //val playerBoard = turnInfo.table.boards[turnInfo.playerIndex]
 
-    for (i in availablePlays){
-        when (i.color){
+    for (i in availablePlays) {
+        when (i.color) {
             Color.BROWN -> {
 
-                if((0..1).random(random) == 0){
-                    prioQ.offer(QCard(i,2))
-                }
-                else{
-                    prioQ.offer(QCard(i,5))
+                if ((0..1).random(random) == 0) {
+                    prioQ.offer(QCard(i, 2))
+                } else {
+                    prioQ.offer(QCard(i, 5))
                 }
             }
+
             Color.GREY -> {
-                prioQ.offer(QCard(i,5))
+                prioQ.offer(QCard(i, 5))
             }
+
             Color.YELLOW -> {
-                prioQ.offer(QCard(i,5))
+                prioQ.offer(QCard(i, 5))
             }
+
             Color.RED -> {
-                var myReds= 0
-                var ennemyReds= 0
-                for(board in turnInfo.table.boards){
-                    if(board.playerIndex == turnInfo.playerIndex){
+                var myReds = 0
+                var ennemyReds = 0
+                for (board in turnInfo.table.boards) {
+                    if (board.playerIndex == turnInfo.playerIndex) {
                         myReds = board.military.nbShields
-                    }else{
-                        ennemyReds = if(ennemyReds > board.military.nbShields) ennemyReds else board.military.nbShields
+                    } else {
+                        ennemyReds = if (ennemyReds > board.military.nbShields) ennemyReds else board.military.nbShields
                     }
-                    if(ennemyReds > myReds) prioQ.offer(QCard(i,1))
+                    if (ennemyReds > myReds) prioQ.offer(QCard(i, 1))
                 }
             }
+
             Color.BLUE -> {
-                prioQ.offer(QCard(i,3))
+                prioQ.offer(QCard(i, 3))
             }
+
             Color.GREEN -> {
-                prioQ.offer(QCard(i,4))
+                prioQ.offer(QCard(i, 4))
             }
+
             Color.PURPLE -> {
-                prioQ.offer(QCard(i,4))
+                prioQ.offer(QCard(i, 4))
             }
         }
     }
 
-    if(availablePlays.isEmpty() || prioQ.peek() == null){
+    if (availablePlays.isEmpty() || prioQ.peek() == null) {
         return PlayerMove(MoveType.DISCARD, turnInfo.action.hand.first().name)
     }
 
-    return PlayerMove(MoveType.PLAY, prioQ.peek().handCard.name, prioQ.peek().handCard.playability.transactionOptions.first())
+    return PlayerMove(
+        MoveType.PLAY,
+        prioQ.peek().handCard.name,
+        prioQ.peek().handCard.playability.transactionOptions.first()
+    )
 
 }
 
@@ -634,13 +629,20 @@ fun Decks.getScrambledDeckForPlayer(
     )
 }
 
-data class TestResult(val gameId: Int, val playouts: Int, val playedMoves: List<PlayedMove>, val scoreBoard: ScoreBoard)
+data class TestResult(
+    val gameId: Int,
+    val playouts: Int,
+    val playedMoves: List<PlayedMove>,
+    val scoreBoard: ScoreBoard,
+    val wonders: List<AssignedWonder>
+)
+
 fun mctsTest(gameDefinition: GameDefinition, id: Int, playouts: Int, debugPrinting: Boolean = false): TestResult {
     val gameFactoryFactory = NonCheatingDeterministicGameFactoryFactory(gameDefinition, id)
 
     val mctsagent = MCTSAgent(0, playouts, gameFactoryFactory)
 
-    val agents = listOf(mctsagent, RandomAgent(id), RandomAgent(id))
+    val agents = listOf(mctsagent, RuleBasedRobot(id), RuleBasedRobot(id))
 
     val game = gameFactoryFactory.getFactory()()
 
@@ -655,7 +657,7 @@ fun mctsTest(gameDefinition: GameDefinition, id: Int, playouts: Int, debugPrinti
 
         if (debugPrinting) mctsagent.mcts?.let { printTree(it.root, 0) }
     }
-    return TestResult(id, playouts, gameFactoryFactory.lastPlayedMoves, game.computeScore())
+    return TestResult(id, playouts, gameFactoryFactory.lastPlayedMoves, game.computeScore(), gameFactoryFactory.wonders)
 
 }
 
@@ -695,14 +697,26 @@ fun envTest() {
 
 fun main() {
     val gameDefinition = GameDefinition.loadWithRemovedWonders(listOf("Babylon", "Halikarnassus", "Olympia"))
+    val scoresStream = FileOutputStream("scores.csv", true)
+    val writer = scoresStream.bufferedWriter()
+    writer.write("gameid,playerindex,wondername,boardGold,CIVIL,MILITARY,SCIENCE,TRADE,GUILD,WONDER,GOLD")
+    writer.newLine()
+    writer.flush()
+    val playedMovesStream = FileOutputStream("playedmoves.csv", true)
+    val writer2 = playedMovesStream.bufferedWriter()
+    writer2.write("gameid,playerindex,moveid,movetype,cardname")
+    writer2.newLine()
+    writer2.flush()
     //while (true) {
     val startTime = System.nanoTime()
-    val tests = (0 until 400).map {
+    val tests = (0 until 500).map {
         {
             println("Game $it started")
-            val numberOfPlayouts = if (it < 100) 10 else if (it < 200) 20 else if (it < 300) 40 else 80
+            val numberOfPlayouts = if (it < 100) 10 else if (it < 200) 20 else if (it < 300) 40 else if (it < 400) 80 else 160
             val res = mctsTest(gameDefinition, it, numberOfPlayouts)
             println("Game $it ended")
+            scoresStream.apply { writeCsvScores(res) }
+            playedMovesStream.apply { writeCsvPlayedmoves(res) }
             res
         }
     }
@@ -712,6 +726,29 @@ fun main() {
     println("Execution time: ${(endTime - startTime) / 1_000_000} ms")
     //mctsTest(
     // }
+}
+
+fun OutputStream.writeCsvScores(data: TestResult) {
+    val writer = bufferedWriter()
+    //writer.write(""""Win","Points","playouts""")
+    //writer.newLine()
+
+    data.scoreBoard.scores.forEach {
+        writer.write("${data.gameId},${it.playerIndex},${data.wonders[it.playerIndex].name + data.wonders[it.playerIndex].side},${it.boardGold},${it.pointsByCategory[ScoreCategory.CIVIL]},${it.pointsByCategory[ScoreCategory.MILITARY]},${it.pointsByCategory[ScoreCategory.SCIENCE]},${it.pointsByCategory[ScoreCategory.TRADE]},${it.pointsByCategory[ScoreCategory.GUILD]},${it.pointsByCategory[ScoreCategory.WONDER]},${it.pointsByCategory[ScoreCategory.GOLD]}")
+        writer.newLine()
+    }
+
+    writer.flush()
+}
+
+fun OutputStream.writeCsvPlayedmoves(data: TestResult) {
+    val writer = bufferedWriter()
+
+    data.playedMoves.forEachIndexed { idx, move ->
+        writer.write("${data.gameId},${move.playerIndex},${idx},${move.type.name},${move.card.name}")
+        writer.newLine()
+    }
+    writer.flush()
 }
 
 //fun main() {
